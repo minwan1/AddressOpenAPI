@@ -1,0 +1,281 @@
+﻿<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<script src="http://code.jquery.com/jquery.min.js"></script>
+
+<title>Insert title here</title>
+</head>
+<body>
+<form name="form" id="form" method="post">
+	<input type="hidden" name="currentPage" value="1"/>
+	<input type="hidden" name="countPerPage" value="15"/>
+	키값:<input type="text" name="confmKey" value=""/>
+	검색:<input type="text" name="keyword" value="" />
+	<input type="button" id="xmlButton" value="주소(XML)검색하기"/>
+	<button type="button" id="testButton">주소(JSON)검색하기</button>
+</form>
+
+
+<div id="list" ></div><!-- 검색 결과 리스트 출력 영역 -->
+	<br /><br />
+<div class="paginate" id="pageApi"></div>	
+
+<div id="minwan"></div>
+
+
+
+<script language="javascript"> //유효성검사
+var jsonValue=false;
+
+  
+
+    // 적용예 (api 호출 전에 검색어 체크) 
+    function searchJuso() {
+        if (!checkSearchedWord()) {
+            return;
+        }
+    }
+
+    function getXmlAddress() {
+        $.ajax({
+            url: "http://www.juso.go.kr/addrlink/addrLinkApiJsonp.do"  //인터넷망
+		, type: "post"
+		, data: $("#form").serialize()
+		, dataType: "jsonp"
+		, crossDomain: true
+		, success: function(xmlStr) {
+			console.log(xmlStr);
+		    if (navigator.appName.indexOf("Microsoft") > -1) {
+		        var xmlData = new ActiveXObject("Microsoft.XMLDOM");
+		        xmlData.loadXML(xmlStr.returnXml)
+		    } else {
+		        var xmlData = xmlStr.returnXml;
+		    }
+		    $("#list").html("");
+		    var errCode = $(xmlData).find("errorCode").text();
+		    var errDesc = $(xmlData).find("errorMessage").text();
+		    if (errCode != "0") {
+		        alert(errCode + "=" + errDesc);
+		    } else {
+		        if (xmlStr != null) {
+		            makeList(xmlData); //xmldata 출력
+		        }
+		    }
+		}
+	    , error: function(xhr, status, error) {
+	        alert("에러발생");
+	    }
+        });
+    }
+
+    function makeList(xmlStr) {
+        var htmlStr = "";
+        htmlStr += "<table>";
+        $(xmlStr).find("juso").each(function(ind) {
+            htmlStr += "<tr>";
+            htmlStr += "<td>" + $(this).find('roadAddr').text() + "</td>";
+            htmlStr += "<td>" + $(this).find('roadAddrPart1').text() + "</td>";
+            htmlStr += "<td>" + $(this).find('roadAddrPart2').text() + "</td>";
+            htmlStr += "<td>" + $(this).find('jibunAddr').text() + "</td>";
+            htmlStr += "<td>" + $(this).find('engAddr').text() + "</td>";
+            htmlStr += "<td>" + $(this).find('zipNo').text() + "</td>";
+            htmlStr += "<td>" + $(this).find('admCd').text() + "</td>";
+            htmlStr += "<td>" + $(this).find('rnMgtSn').text() + "</td>";
+            htmlStr += "<td>" + $(this).find('bdMgtSn').text() + "</td>";
+            htmlStr += "<td>" + $(this).find('detBdNmList').text() + "</td>";
+            htmlStr += "</tr>";
+        });
+    
+        htmlStr += "</table>";
+        $("#list").html(htmlStr);
+
+        pageMake(xmlStr);
+    }
+    
+
+
+    
+    /////////////////////////////common쪽////////////////////////////////////////
+    
+    
+    //특수문자, 특정문자열(sql예약어의 앞뒤공백포함) 제거
+    function checkSearchedWord() {
+    	console.log("obj:"+$("#form").find("[name=keyword]").val());
+    	var search="obj:"+$("#form").find("[name=keyword]").val();
+        if (search.length > 0) {
+            //특수문자 제거
+            var expText = /[%=><]/;
+            if (expText.test(search) == true) {
+                alert("특수문자를 입력 할수 없습니다.");
+                search = search.split(expText).join("");
+                return false;
+            }
+
+            //특정문자열(sql예약어의 앞뒤공백포함) 제거
+            var sqlArray = new Array(
+            //sql 예약어
+			"OR", "SELECT", "INSERT", "DELETE", "UPDATE", "CREATE", "DROP", "EXEC",
+             		 "UNION", "FETCH", "DECLARE", "TRUNCATE"
+		);
+
+            var regex;
+            var regex_plus;
+            for (var i = 0; i < sqlArray.length; i++) {
+                regex = new RegExp("\\s" + sqlArray[i] + "\\s", "gi");
+                if (regex.test(search)) {
+                    alert("\"" + sqlArray[i] + "\"와(과) 같은 특정문자로 검색할 수 없습니다.");
+                    search = search.replace(regex, "");
+                    return false;
+                }
+
+                regex_plus = new RegExp("\\+" + sqlArray[i] + "\\+", "gi");
+                if (regex_plus.test(search)) {
+                    alert("\"" + sqlArray[i] + "\"와(과) 같은 특정문자로 검색할 수 없습니다.");
+                    search = search.replace(regex_plus, "");
+                    return false;
+                }
+            }
+        }
+		if(jsonValue){
+			getJsonAddress();
+		}else{
+			getXmlAddress();
+		}
+        
+    }
+    
+    
+    
+    //페이지 이동
+    function goPage(pageNum) {
+    	console.log("[name=currentPage]"+$("#form").find("[name=currentPage]").val());
+    	$("#form").find("[name=currentPage]").val(pageNum);
+    	console.log("[name=currentPage]"+$("#form").find("[name=currentPage]").val());
+        if(jsonValue){
+        	getJsonAddress();
+        }else{
+        	getXmlAddress();
+        }
+    }
+
+    // 페이지 처리 (주소정보 리스트 makeList(xmlData); 다음에서 호출) 
+    function pageMake(data) {
+    	if(jsonValue){
+    		console.log(data.results.common.totalCount);
+    		var total = data.results.common.totalCount; // 총건수
+    	}else{
+    		var total = $(data).find("totalCount").text(); // 총건수
+    	}
+        var pageNum = $("#form").find("[name=currentPage]").val(); // 현재페이지
+        var paggingStr = "";
+        if (total < 1) {
+        } else {
+            var PAGEBLOCK = parseInt($("#form").find("[name=countPerPage]").val()); //페이지 벨류가져오기
+            var pageSize = parseInt($("#form").find("[name=countPerPage]").val()); 
+            var totalPages = Math.floor((total - 1) / pageSize) + 1; 
+            var firstPage = Math.floor((pageNum - 1) / PAGEBLOCK) * PAGEBLOCK + 1;
+            if (firstPage <= 0) firstPage = 1;
+            var lastPage = parseInt(firstPage) - 1 + PAGEBLOCK;
+            
+            if (lastPage > totalPages) lastPage = totalPages;
+            var nextPage = parseInt(lastPage) + 1;
+            var prePage = firstPage - 5;
+            if (firstPage > PAGEBLOCK) {
+                paggingStr += "<a href='javascript:goPage(" + prePage + ");'>◁</a>  ";
+            }
+            for (i = firstPage; i <= lastPage; i++) {
+                if (pageNum == i)
+                    paggingStr += "<a style='font-weight:bold;color:blue;font-size:15px;' href='javascript:goPage(" + i + ");'>" + i + "</a>  ";
+                else
+                    paggingStr += "<a href='javascript:goPage(" + i + ");'>" + i + "</a>  "; //현재벨류 변경됨
+            }
+            if (lastPage < totalPages) {
+                paggingStr += "<a href='javascript:goPage(" + nextPage + ");'>▷</a>";
+            }
+            $("#pageApi").html(paggingStr);
+        }
+    }
+    
+</script>
+
+
+
+
+
+
+
+<script type="text/javascript"> //json으로 받기
+
+function makeJson(json){
+	console.log(json)
+	console.log(json.results.juso);
+	var htmlStr = "";
+    htmlStr += "<table>";
+    $.each(json.results.juso, function(index) {
+        htmlStr += "<tr>";
+        htmlStr += "<td>" + json.results.juso[index].roadAddr + "</td>";
+        htmlStr += "<td>" + json.results.juso[index].roadAddrPart1 + "</td>";
+        htmlStr += "<td>" + json.results.juso[index].roadAddrPart2+ "</td>";
+        htmlStr += "<td>" + json.results.juso[index].jibunAddr + "</td>";
+        htmlStr += "<td>" + json.results.juso[index].engAddr + "</td>";
+        htmlStr += "<td>" + json.results.juso[index].zipNo + "</td>";
+        htmlStr += "<td>" + json.results.juso[index].admCd+ "</td>";
+        htmlStr += "<td>" + json.results.juso[index].rnMgtSn + "</td>";
+        htmlStr += "<td>" + json.results.juso[index].bdMgtSn+ "</td>";
+        htmlStr += "<td>" + json.results.juso[index].detBdNmList + "</td>";
+        htmlStr += "</tr>";
+    });
+    
+    htmlStr += "</table>";
+    $("#list").html(htmlStr);
+    pageMake(json);
+
+}
+
+function getJsonAddress(){
+	var user= "http://www.juso.go.kr/addrlink/addrLinkApiJsonp.do"  //인터넷망;
+		$("#minwan").append(user+$("#form").serialize());
+	    $.ajax({
+	        url: "http://www.juso.go.kr/addrlink/addrLinkApiJsonp.do?&resultType=json"  //인터넷망
+		, type: "post"
+		, data: $("#form").serialize()
+		, dataType: "jsonp"
+	 	, crossDomain: true 
+		, success: function(json) {
+			console.log(json);
+			$("#list").html("");
+		    var errCode = json.results.common.errorCode;
+		    var errorMessage = json.results.common.errorMessage;
+		    
+		    if (errCode != "0") {
+		        alert(errCode + "=" + errorMessage);
+		    } else {
+		        if (json.results.juso.length != null) {
+		        	makeJson(json); //xmldata 출력
+		        }
+		    }
+			
+		}
+	    , error: function(xhr, status, error) {
+	        alert("에러발생");
+	    }
+	    });
+}
+
+
+$("#xmlButton").bind("click",function(){
+	jsonValue=false;
+	$("#form").find("[name=currentPage]").val(1);
+	checkSearchedWord();
+});
+$("#testButton").bind("click", function() {
+	jsonValue=true;
+	$("#form").find("[name=currentPage]").val(1);
+	checkSearchedWord();
+});
+
+</script>
+
+</body>
+</html> 
